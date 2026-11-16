@@ -182,6 +182,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(permItem)
         loginItem.target = self
         menu.addItem(loginItem)
+        let help = NSMenuItem(title: "Shortcuts & Help…", action: #selector(showWelcome), keyEquivalent: "")
+        help.target = self
+        menu.addItem(help)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit WindowHome", action: #selector(NSApp.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
@@ -191,7 +194,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registerHotKey(id: 2, keyCode: kVK_ANSI_G, action: gatherAllToBuiltIn)
         registerHotKey(id: 3, keyCode: kVK_ANSI_N, action: moveFocusedToNextScreen)
 
-        _ = ensureTrusted()
+        // Menu bar apps have no window, so opening one looks like nothing happened.
+        // Show a welcome window on first launch, or whenever permission is missing.
+        let firstRun = !UserDefaults.standard.bool(forKey: "didShowWelcome")
+        if firstRun || !AXIsProcessTrusted() {
+            UserDefaults.standard.set(true, forKey: "didShowWelcome")
+            DispatchQueue.main.async { self.showWelcome() }
+        }
+    }
+
+    // Double-clicking the app again while it is already running.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showWelcome()
+        return false
+    }
+
+    @objc func showWelcome() {
+        let trusted = AXIsProcessTrusted()
+        let alert = NSAlert()
+        alert.icon = NSApp.applicationIconImage
+        alert.messageText = "WindowHome is running"
+        alert.informativeText = """
+        It lives in your menu bar (the window icon at the top of the screen). There's no main window.
+
+        ⌃⌥⌘B  Move the focused window to the built-in screen
+        ⌃⌥⌘G  Gather all windows onto the built-in screen
+        ⌃⌥⌘N  Move the focused window to the next screen
+
+        \(trusted
+            ? "✓ Accessibility permission is allowed. You're all set."
+            : "⚠︎ Accessibility permission is needed to move windows. Click \"Open Accessibility Settings\" and turn WindowHome on.")
+
+        Don't see the menu bar icon? It may be hidden behind the camera notch or turned off in System Settings → Menu Bar.
+        """
+        if !trusted { alert.addButton(withTitle: "Open Accessibility Settings") }
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn && !trusted { openPrivacy() }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
